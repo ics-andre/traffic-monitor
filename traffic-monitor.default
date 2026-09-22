@@ -12,6 +12,11 @@ TRAFFIC_MONITOR_LOG_DIR=/var/log/traffic-monitor
 # Live snapshot disk sync interval in seconds (default: 10)
 TRAFFIC_MONITOR_SYNC_INTERVAL=10
 
+# Retention period in days for daily archives (default: 7)
+# Archived files older than this count will be automatically purged.
+# Set to 0 or negative to keep archives indefinitely.
+TRAFFIC_MONITOR_RETENTION_DAYS=7
+
 # Automatically detect and exclude local container bridge networks
 # (e.g., Docker docker0, Harbor br-*, Podman, CNI, virbr)
 TRAFFIC_MONITOR_EXCLUDE_CONTAINERS=true

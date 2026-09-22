@@ -11,6 +11,7 @@ Unlike standard packet sniffing tools that flood terminal scrollbacks with milli
 * **Real-time Flow Aggregation**: Summarizes traffic per unique `DESTINATION (IP:PORT)`. No redundant per-packet log spam.
 * **Auto-Sorted by Volume**: Endpoints consuming the highest bandwidth always appear at the top (descending sort by bytes).
 * **Automatic Container & IP Exclusion**: Filters out traffic to local container networks (`docker0`, `br-*`, Podman, CNI, virbr) and custom IP/CIDR blocks to focus strictly on real external/cross-cloud network traffic.
+* **Configurable Log Retention (Default: 7 Days)**: Automatically cleans up archived daily logs older than N days (default: 7 days) upon rotation and startup, keeping disk usage bounded.
 * **Automatic 24-Hour Log Rotation**: Automatically saves the completed day's report at midnight (`00:00`) to `outbound_traffic_YYYY-MM-DD.txt` and resets daily counters without stopping or dropping captured packets.
 * **Periodic Live Snapshot**: Flushes current day-to-date traffic metrics every 10 seconds to `outbound_traffic_current.txt`.
 * **Zero Data Loss on Shutdown**: Intercepts `SIGTERM` and `SIGINT` signals so when the system shuts down or the service stops/restarts, the latest metrics are safely synced to disk.
@@ -163,6 +164,11 @@ TRAFFIC_MONITOR_LOG_DIR=/var/log/traffic-monitor
 
 # Live snapshot sync interval in seconds (default: 10)
 TRAFFIC_MONITOR_SYNC_INTERVAL=10
+
+# Retention period in days for daily archives (default: 7)
+# Archived reports older than N days are automatically purged.
+# Set to 0 or negative to retain logs indefinitely.
+TRAFFIC_MONITOR_RETENTION_DAYS=7
 
 # Automatically detect and exclude local container bridge networks
 # (e.g., Docker docker0, Harbor br-*, Podman, CNI, virbr)

@@ -53,8 +53,10 @@ Traffic Monitor - 24-Hour Aggregated Outbound Network Traffic Monitor
 Monitors network traffic using tcpdump, aggregates bytes and packets per destination IP:port,
 and automatically rotates logs every 24 hours (midnight).
 
-Supports excluding specific destination IPs or subnets (e.g. local Docker/container bridge networks,
-loopback, or cloud link-local addresses).
+Features:
+- Excludes specific destination IPs or subnets (e.g. local Docker/container bridge networks,
+  loopback, or cloud link-local addresses).
+- Automatically purges archived logs older than retention period (default: 7 days, configurable).
 """
 
 import subprocess
@@ -72,6 +74,7 @@ DEFAULT_LOG_DIR = "/var/log/traffic-monitor"
 DEFAULT_INTERFACE = "any"
 DEFAULT_FILTER = "-Q out"
 DEFAULT_SYNC_INTERVAL = 10
+DEFAULT_RETENTION_DAYS = 7
 
 
 def detect_container_subnets():
@@ -120,13 +123,46 @@ def parse_excluded_networks(raw_str, include_containers=True):
     return networks
 
 
+def cleanup_old_logs(log_dir, retention_days):
+    """Purge archived daily logs older than retention_days. If retention_days <= 0, cleanup is disabled."""
+    if retention_days <= 0:
+        return 0
+
+    deleted_count = 0
+    pattern = re.compile(r"^outbound_traffic_(\d{4}-\d{2}-\d{2})\.txt$")
+    now = datetime.now()
+
+    try:
+        if not os.path.exists(log_dir):
+            return 0
+
+        for filename in os.listdir(log_dir):
+            match = pattern.match(filename)
+            if match:
+                date_str = match.group(1)
+                try:
+                    file_date = datetime.strptime(date_str, "%Y-%m-%d")
+                    age_days = (now - file_date).days
+                    if age_days > retention_days:
+                        file_path = os.path.join(log_dir, filename)
+                        os.remove(file_path)
+                        deleted_count += 1
+                except ValueError:
+                    pass
+    except Exception as e:
+        sys.stderr.write(f"Warning: Error during log retention cleanup: {e}\n")
+
+    return deleted_count
+
+
 class TrafficMonitor:
-    def __init__(self, log_dir, interface, direction_filter, sync_interval, excluded_networks):
+    def __init__(self, log_dir, interface, direction_filter, sync_interval, excluded_networks, retention_days):
         self.log_dir = log_dir
         self.interface = interface
         self.direction_filter = direction_filter
         self.sync_interval = sync_interval
         self.excluded_networks = excluded_networks
+        self.retention_days = retention_days
         self.exclusion_cache = {}
 
         self.stats = {}
@@ -160,6 +196,8 @@ class TrafficMonitor:
         lines = []
         lines.append(f"# Outbound Traffic Report - Date: {target_date}")
         lines.append(f"# Last Updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        retention_label = f"{self.retention_days} days" if self.retention_days > 0 else "unlimited (disabled)"
+        lines.append(f"# Retention Policy: {retention_label}")
         if self.excluded_networks:
             ex_str = ", ".join(str(n) for n in self.excluded_networks)
             lines.append(f"# Excluded Networks: {ex_str}")
@@ -203,6 +241,8 @@ class TrafficMonitor:
         signal.signal(signal.SIGTERM, self.on_shutdown)
         signal.signal(signal.SIGINT, self.on_shutdown)
 
+        cleanup_old_logs(self.log_dir, self.retention_days)
+
         cmd = ["tcpdump", "-i", self.interface, "-nn"]
         if self.direction_filter:
             cmd.extend(self.direction_filter.split())
@@ -225,6 +265,7 @@ class TrafficMonitor:
             if today != self.current_date:
                 final_report = self.generate_report(self.current_date)
                 self.save_to_file(f"outbound_traffic_{self.current_date}.txt", final_report)
+                cleanup_old_logs(self.log_dir, self.retention_days)
                 self.stats.clear()
                 self.current_date = today
 
@@ -258,6 +299,9 @@ def main():
     parser.add_argument("--sync-interval", type=int,
                         default=int(os.environ.get("TRAFFIC_MONITOR_SYNC_INTERVAL", DEFAULT_SYNC_INTERVAL)),
                         help=f"Disk sync interval in seconds (default: {DEFAULT_SYNC_INTERVAL})")
+    parser.add_argument("--retention-days", type=int,
+                        default=int(os.environ.get("TRAFFIC_MONITOR_RETENTION_DAYS", DEFAULT_RETENTION_DAYS)),
+                        help=f"Days to retain daily archive logs before deletion (default: {DEFAULT_RETENTION_DAYS}, set <= 0 to disable)")
     parser.add_argument("--exclude-networks",
                         default=os.environ.get("TRAFFIC_MONITOR_EXCLUDE_NETWORKS", ""),
                         help="Comma-separated IPs/CIDRs to exclude (e.g. '127.0.0.0/8,169.254.169.254')")
@@ -274,7 +318,8 @@ def main():
         interface=args.interface,
         direction_filter=args.filter,
         sync_interval=args.sync_interval,
-        excluded_networks=excluded
+        excluded_networks=excluded,
+        retention_days=args.retention_days
     )
     monitor.run()
 
@@ -301,6 +346,11 @@ TRAFFIC_MONITOR_LOG_DIR=/var/log/traffic-monitor
 
 # Live snapshot disk sync interval in seconds (default: 10)
 TRAFFIC_MONITOR_SYNC_INTERVAL=10
+
+# Retention period in days for daily archives (default: 7)
+# Archived files older than this count will be automatically purged.
+# Set to 0 or negative to keep archives indefinitely.
+TRAFFIC_MONITOR_RETENTION_DAYS=7
 
 # Automatically detect and exclude local container bridge networks
 # (e.g., Docker docker0, Harbor br-*, Podman, CNI, virbr)
