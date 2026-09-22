@@ -1,0 +1,20 @@
+[Unit]
+Description=Outbound Traffic Monitor (24h Auto-Rotate)
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/traffic-monitor.py
+Restart=always
+RestartSec=5
+KillMode=mixed
+TimeoutStopSec=10
+
+# Environment overrides can be defined here or in /etc/default/traffic-monitor
+# Environment=TRAFFIC_MONITOR_LOG_DIR=/var/log/traffic-monitor
+# Environment=TRAFFIC_MONITOR_INTERFACE=any
+# Environment=TRAFFIC_MONITOR_SYNC_INTERVAL=10
+EnvironmentFile=-/etc/default/traffic-monitor
+
+[Install]
+WantedBy=multi-user.target

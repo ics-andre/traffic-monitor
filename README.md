@@ -1,0 +1,166 @@
+# Traffic Monitor
+
+A lightweight, automated 24-hour outbound network traffic monitor and aggregator for Linux. Built on top of `tcpdump` and Python, managed as a resilient `systemd` service.
+
+## Overview
+
+Unlike standard packet sniffing tools that flood terminal scrollbacks with millions of individual packet records, **Traffic Monitor** groups and aggregates network flow per destination endpoint (`IP:Port`). It tracks packet counts and cumulative transferred bytes in real-time, automatically rotating logs every 24 hours.
+
+### Key Features
+
+* **Real-time Flow Aggregation**: Summarizes traffic per unique `DESTINATION (IP:PORT)`. No redundant per-packet log spam.
+* **Auto-Sorted by Volume**: Endpoints consuming the highest bandwidth always appear at the top (descending sort by bytes).
+* **Automatic 24-Hour Log Rotation**: Automatically saves the completed day's report at midnight (`00:00`) to `outbound_traffic_YYYY-MM-DD.txt` and resets daily counters without stopping or dropping captured packets.
+* **Periodic Live Snapshot**: Flushes current day-to-date traffic metrics every 10 seconds to `outbound_traffic_current.txt`.
+* **Zero Data Loss on Shutdown**: Intercepts `SIGTERM` and `SIGINT` signals so when the system shuts down or the service stops/restarts, the latest metrics are safely synced to disk.
+* **Systemd Native**: Automatic restart on failure, auto-start on boot, standard log integration.
+
+---
+
+## Directory Structure
+
+```text
+.
+├── traffic-monitor.py       # Core Python traffic aggregator
+├── traffic-monitor.service  # Systemd service unit file
+├── install.sh               # One-step automated installation script
+├── uninstall.sh             # Uninstallation and cleanup script
+└── README.md                # Documentation and usage guide
+```
+
+---
+
+## Prerequisites
+
+* Linux OS (Ubuntu/Debian, RHEL/Rocky/Alma/CentOS, Amazon Linux, etc.)
+* `python3` (v3.6+)
+* `tcpdump`
+* Root or `sudo` privileges
+
+---
+
+## Installation
+
+### Automated Installation (Recommended)
+
+1. Clone this repository onto your server:
+   ```bash
+   git clone https://github.com/ics-andre/traffic-monitor.git
+   cd traffic-monitor
+   ```
+
+2. Run the installer:
+   ```bash
+   sudo ./install.sh
+   ```
+
+The script will automatically:
+* Verify and install missing packages (`python3`, `tcpdump`).
+* Deploy the executable to `/usr/local/bin/traffic-monitor.py`.
+* Create the log directory at `/var/log/traffic-monitor/`.
+* Configure, enable, and start the systemd unit `traffic-monitor.service`.
+
+---
+
+## Usage & Operations
+
+### Checking Service Status
+
+```bash
+sudo systemctl status traffic-monitor
+```
+
+### Viewing Live Traffic Metrics
+
+To view the active day's aggregated outbound traffic:
+```bash
+sudo cat /var/log/traffic-monitor/outbound_traffic_current.txt
+```
+
+To continuously watch live traffic updates (refreshes every 2 seconds):
+```bash
+watch -n 2 'sudo cat /var/log/traffic-monitor/outbound_traffic_current.txt'
+```
+
+### Viewing Archived Daily Reports
+
+Each day at `00:00` (midnight), a completed summary is archived:
+```bash
+ls -lh /var/log/traffic-monitor/
+```
+
+Example listing:
+```text
+/var/log/traffic-monitor/
+├── outbound_traffic_current.txt       # Real-time running total for today
+├── outbound_traffic_2026-09-22.txt    # Archived report for 2026-09-22
+└── outbound_traffic_2026-09-23.txt    # Archived report for 2026-09-23
+```
+
+---
+
+## Log Output Format
+
+Reports are rendered in an easy-to-read tabular format:
+
+```text
+# Outbound Traffic Report - Date: 2026-09-23
+# Last Updated: 2026-09-23 00:15:30
+------------------------------------------------------------------------
+DESTINATION (IP:PORT)                      PACKETS      TOTAL BYTES    
+------------------------------------------------------------------------
+10.101.64.10.6379                          17201        13803520       
+10.101.0.4.9009                            533          3511054        
+10.151.10.136.1514                         390          181836         
+10.101.0.4.3100                            282          89153          
+10.126.1.6.9443                            330          57915          
+10.101.0.10.53234                          25           36431          
+169.254.169.254.80                         823          25341          
+10.101.0.14.8200                           66           11316          
+------------------------------------------------------------------------
+GRAND TOTAL                                19650        17716566       
+```
+
+---
+
+## Custom Configuration
+
+You can override default settings by creating `/etc/default/traffic-monitor`:
+
+```bash
+sudo tee /etc/default/traffic-monitor << 'EOF'
+# Network interface to listen on (default: any)
+TRAFFIC_MONITOR_INTERFACE=any
+
+# Direction filter passed to tcpdump (default: -Q out)
+TRAFFIC_MONITOR_FILTER=-Q out
+
+# Log storage directory (default: /var/log/traffic-monitor)
+TRAFFIC_MONITOR_LOG_DIR=/var/log/traffic-monitor
+
+# Live snapshot sync interval in seconds (default: 10)
+TRAFFIC_MONITOR_SYNC_INTERVAL=10
+EOF
+```
+
+After modifying the configuration, restart the service:
+```bash
+sudo systemctl restart traffic-monitor
+```
+
+---
+
+## Uninstallation
+
+To cleanly remove the service and binaries:
+```bash
+sudo ./uninstall.sh
+```
+
+*(Note: Existing log files in `/var/log/traffic-monitor` are preserved by default. To purge them, run `sudo rm -rf /var/log/traffic-monitor`).*
+
+---
+
+## License
+
+MIT License. See [LICENSE](LICENSE) for details.
