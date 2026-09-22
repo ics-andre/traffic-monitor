@@ -58,12 +58,13 @@ fi
 echo "[*] Installing systemd service unit to ${SERVICE_DEST}..."
 cp "${SERVICE_SRC}" "${SERVICE_DEST}"
 
-# 3. Reload and start systemd service
+# 3. Reload and start/restart systemd service
 echo "[*] Reloading systemd daemon..."
 systemctl daemon-reload
 
-echo "[*] Enabling and starting traffic-monitor.service..."
-systemctl enable --now traffic-monitor.service
+echo "[*] Enabling and restarting traffic-monitor.service..."
+systemctl enable traffic-monitor.service
+systemctl restart traffic-monitor.service
 
 # 4. Status check
 echo "=========================================================="
