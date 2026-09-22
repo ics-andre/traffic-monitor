@@ -1,6 +1,6 @@
 # Traffic Monitor
 
-A lightweight, automated 24-hour outbound network traffic monitor and aggregator for Linux. Built on top of `tcpdump` and Python, managed as a resilient `systemd` service.
+A lightweight, automated 24-hour outbound network traffic monitor and aggregator for Linux. Built with **pure Bash and Awk** on top of `tcpdump`, managed as a resilient `systemd` service with **zero Python or external dependencies**.
 
 ## Overview
 
@@ -8,13 +8,14 @@ Unlike standard packet sniffing tools that flood terminal scrollbacks with milli
 
 ### Key Features
 
+* **Zero Python Dependency**: Written entirely in pure **POSIX Bash & Awk** + `tcpdump`. Runs out-of-the-box on minimal Linux installations (Ubuntu/Debian, RHEL/Rocky/Alma/CentOS, Amazon Linux, Alpine).
 * **Real-time Flow Aggregation**: Summarizes traffic per unique `DESTINATION (IP:PORT)`. No redundant per-packet log spam.
 * **Auto-Sorted by Volume**: Endpoints consuming the highest bandwidth always appear at the top (descending sort by bytes).
 * **Automatic Container & IP Exclusion**: Filters out traffic to local container networks (`docker0`, `br-*`, Podman, CNI, virbr) and custom IP/CIDR blocks to focus strictly on real external/cross-cloud network traffic.
 * **Configurable Log Retention (Default: 7 Days)**: Automatically cleans up archived daily logs older than N days (default: 7 days) upon rotation and startup, keeping disk usage bounded.
 * **Automatic 24-Hour Log Rotation**: Automatically saves the completed day's report at midnight (`00:00`) to `outbound_traffic_YYYY-MM-DD.txt` and resets daily counters without stopping or dropping captured packets.
 * **Periodic Live Snapshot**: Flushes current day-to-date traffic metrics every 10 seconds to `outbound_traffic_current.txt`.
-* **Zero Data Loss on Shutdown**: Intercepts `SIGTERM` and `SIGINT` signals so when the system shuts down or the service stops/restarts, the latest metrics are safely synced to disk.
+* **Zero Data Loss on Shutdown**: Flushes final aggregated metrics to disk when the service stops or restarts.
 * **Systemd Native**: Automatic restart on failure, auto-start on boot, standard log integration.
 
 ---
@@ -23,9 +24,10 @@ Unlike standard packet sniffing tools that flood terminal scrollbacks with milli
 
 ```text
 .
-├── traffic-monitor.py       # Core Python traffic aggregator
+├── traffic-monitor.sh       # Core Bash/Awk traffic aggregator
 ├── traffic-monitor.service  # Systemd service unit file
-├── install.sh               # One-step automated installation script
+├── traffic-monitor.default  # Default environment configuration template
+├── install.sh               # Standalone one-step installer (curl-pipe friendly)
 ├── uninstall.sh             # Uninstallation and cleanup script
 └── README.md                # Documentation and usage guide
 ```
@@ -34,8 +36,8 @@ Unlike standard packet sniffing tools that flood terminal scrollbacks with milli
 
 ## Prerequisites
 
-* Linux OS (Ubuntu/Debian, RHEL/Rocky/Alma/CentOS, Amazon Linux, etc.)
-* `python3` (v3.6+)
+* Linux OS (Ubuntu/Debian, RHEL/Rocky/Alma/CentOS, Amazon Linux, Alpine, etc.)
+* `bash` & `awk` (standard on all Linux distributions)
 * `tcpdump`
 * Root or `sudo` privileges
 

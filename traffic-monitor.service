@@ -4,16 +4,13 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/traffic-monitor.py
+ExecStart=/usr/local/bin/traffic-monitor.sh
 Restart=always
 RestartSec=5
 KillMode=mixed
 TimeoutStopSec=10
 
-# Environment overrides can be defined here or in /etc/default/traffic-monitor
-# Environment=TRAFFIC_MONITOR_LOG_DIR=/var/log/traffic-monitor
-# Environment=TRAFFIC_MONITOR_INTERFACE=any
-# Environment=TRAFFIC_MONITOR_SYNC_INTERVAL=10
+# Environment configuration
 EnvironmentFile=-/etc/default/traffic-monitor
 
 [Install]

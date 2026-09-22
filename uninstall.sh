@@ -23,7 +23,8 @@ echo "          Uninstalling Traffic Monitor                    "
 echo "=========================================================="
 
 SERVICE_NAME="traffic-monitor.service"
-BIN_FILE="/usr/local/bin/traffic-monitor.py"
+BIN_FILE="/usr/local/bin/traffic-monitor.sh"
+LEGACY_PY="/usr/local/bin/traffic-monitor.py"
 SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}"
 CONFIG_FILE="/etc/default/traffic-monitor"
 LOG_DIR="/var/log/traffic-monitor"
@@ -44,6 +45,11 @@ fi
 if [ -f "${BIN_FILE}" ]; then
     echo "[*] Removing executable ${BIN_FILE}..."
     rm -f "${BIN_FILE}"
+fi
+
+if [ -f "${LEGACY_PY}" ]; then
+    echo "[*] Removing legacy executable ${LEGACY_PY}..."
+    rm -f "${LEGACY_PY}"
 fi
 
 if [ -f "${CONFIG_FILE}" ]; then
