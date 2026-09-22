@@ -1,0 +1,21 @@
+# Configuration for Traffic Monitor Service (/etc/default/traffic-monitor)
+
+# Network interface to listen on (default: any)
+TRAFFIC_MONITOR_INTERFACE=any
+
+# Direction filter passed to tcpdump (default: -Q out)
+TRAFFIC_MONITOR_FILTER="-Q out"
+
+# Log storage directory (default: /var/log/traffic-monitor)
+TRAFFIC_MONITOR_LOG_DIR=/var/log/traffic-monitor
+
+# Live snapshot disk sync interval in seconds (default: 10)
+TRAFFIC_MONITOR_SYNC_INTERVAL=10
+
+# Automatically detect and exclude local container bridge networks
+# (e.g., Docker docker0, Harbor br-*, Podman, CNI, virbr)
+TRAFFIC_MONITOR_EXCLUDE_CONTAINERS=true
+
+# Additional IP addresses or CIDR blocks to exclude (comma-separated)
+# Example: "127.0.0.0/8,169.254.169.254/32,10.101.0.12/32"
+TRAFFIC_MONITOR_EXCLUDE_NETWORKS="127.0.0.0/8,169.254.169.254/32"

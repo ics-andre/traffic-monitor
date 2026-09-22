@@ -10,6 +10,7 @@ Unlike standard packet sniffing tools that flood terminal scrollbacks with milli
 
 * **Real-time Flow Aggregation**: Summarizes traffic per unique `DESTINATION (IP:PORT)`. No redundant per-packet log spam.
 * **Auto-Sorted by Volume**: Endpoints consuming the highest bandwidth always appear at the top (descending sort by bytes).
+* **Automatic Container & IP Exclusion**: Filters out traffic to local container networks (`docker0`, `br-*`, Podman, CNI, virbr) and custom IP/CIDR blocks to focus strictly on real external/cross-cloud network traffic.
 * **Automatic 24-Hour Log Rotation**: Automatically saves the completed day's report at midnight (`00:00`) to `outbound_traffic_YYYY-MM-DD.txt` and resets daily counters without stopping or dropping captured packets.
 * **Periodic Live Snapshot**: Flushes current day-to-date traffic metrics every 10 seconds to `outbound_traffic_current.txt`.
 * **Zero Data Loss on Shutdown**: Intercepts `SIGTERM` and `SIGINT` signals so when the system shuts down or the service stops/restarts, the latest metrics are safely synced to disk.
@@ -123,9 +124,9 @@ GRAND TOTAL                                19650        17716566
 
 ---
 
-## Custom Configuration
+## Custom Configuration & IP/Container Exclusion
 
-You can override default settings by creating `/etc/default/traffic-monitor`:
+You can customize the monitor behavior, including excluding local container networks or specific IP addresses, by editing `/etc/default/traffic-monitor`:
 
 ```bash
 sudo tee /etc/default/traffic-monitor << 'EOF'
@@ -133,17 +134,25 @@ sudo tee /etc/default/traffic-monitor << 'EOF'
 TRAFFIC_MONITOR_INTERFACE=any
 
 # Direction filter passed to tcpdump (default: -Q out)
-TRAFFIC_MONITOR_FILTER=-Q out
+TRAFFIC_MONITOR_FILTER="-Q out"
 
 # Log storage directory (default: /var/log/traffic-monitor)
 TRAFFIC_MONITOR_LOG_DIR=/var/log/traffic-monitor
 
 # Live snapshot sync interval in seconds (default: 10)
 TRAFFIC_MONITOR_SYNC_INTERVAL=10
+
+# Automatically detect and exclude local container bridge networks
+# (e.g., Docker docker0, Harbor br-*, Podman, CNI, virbr)
+TRAFFIC_MONITOR_EXCLUDE_CONTAINERS=true
+
+# Additional IP addresses or CIDR blocks to exclude (comma-separated)
+# Example: loopback, cloud metadata, or host IP:
+TRAFFIC_MONITOR_EXCLUDE_NETWORKS="127.0.0.0/8,169.254.169.254/32"
 EOF
 ```
 
-After modifying the configuration, restart the service:
+After modifying the configuration, restart the service to apply changes:
 ```bash
 sudo systemctl restart traffic-monitor
 ```

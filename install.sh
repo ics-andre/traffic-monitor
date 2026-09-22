@@ -35,8 +35,10 @@ fi
 # 2. Setup script location
 SCRIPT_SRC="$(dirname "$0")/traffic-monitor.py"
 SERVICE_SRC="$(dirname "$0")/traffic-monitor.service"
+CONFIG_SRC="$(dirname "$0")/traffic-monitor.default"
 BIN_DEST="/usr/local/bin/traffic-monitor.py"
 SERVICE_DEST="/etc/systemd/system/traffic-monitor.service"
+CONFIG_DEST="/etc/default/traffic-monitor"
 LOG_DIR="/var/log/traffic-monitor"
 
 echo "[*] Installing monitor script to ${BIN_DEST}..."
@@ -45,6 +47,13 @@ chmod +x "${BIN_DEST}"
 
 echo "[*] Creating log directory at ${LOG_DIR}..."
 mkdir -p "${LOG_DIR}"
+
+if [ -f "${CONFIG_SRC}" ] && [ ! -f "${CONFIG_DEST}" ]; then
+    echo "[*] Installing default configuration to ${CONFIG_DEST}..."
+    cp "${CONFIG_SRC}" "${CONFIG_DEST}"
+else
+    echo "[*] Existing configuration preserved at ${CONFIG_DEST}."
+fi
 
 echo "[*] Installing systemd service unit to ${SERVICE_DEST}..."
 cp "${SERVICE_SRC}" "${SERVICE_DEST}"
