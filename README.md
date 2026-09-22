@@ -183,12 +183,28 @@ sudo systemctl restart traffic-monitor
 
 ## Uninstallation
 
-To cleanly remove the service and binaries:
+### One-Liner via `curl`
+
+To cleanly stop the service and remove all installed files:
 ```bash
-sudo ./uninstall.sh
+curl -fsSL https://raw.githubusercontent.com/ics-andre/traffic-monitor/main/uninstall.sh | sudo bash
 ```
 
-*(Note: Existing log files in `/var/log/traffic-monitor` are preserved by default. To purge them, run `sudo rm -rf /var/log/traffic-monitor`).*
+To uninstall **and** delete all stored log files at `/var/log/traffic-monitor`:
+```bash
+curl -fsSL https://raw.githubusercontent.com/ics-andre/traffic-monitor/main/uninstall.sh | sudo bash -s -- --purge
+```
+
+---
+
+### Local Uninstallation
+
+If you cloned the repository:
+```bash
+sudo ./uninstall.sh          # Preserves /var/log/traffic-monitor
+# or
+sudo ./uninstall.sh --purge  # Also removes log directory
+```
 
 ---
 
