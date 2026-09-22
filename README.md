@@ -42,7 +42,28 @@ Unlike standard packet sniffing tools that flood terminal scrollbacks with milli
 
 ## Installation
 
-### Automated Installation (Recommended)
+### Method 1: Quick Install via `curl` (Recommended)
+
+You can install and start the service directly in a single command without cloning:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ics-andre/traffic-monitor/main/install.sh | sudo bash
+```
+
+> **Note for Private Repository Access:**  
+> If the repository is private, authenticate using a GitHub Personal Access Token (PAT):
+> ```bash
+> curl -fsSL -H "Authorization: token <YOUR_GITHUB_TOKEN>" \
+>   https://raw.githubusercontent.com/ics-andre/traffic-monitor/main/install.sh | sudo bash
+> ```
+> Or if using `gh` CLI:
+> ```bash
+> gh api repos/ics-andre/traffic-monitor/contents/install.sh -H "Accept: application/vnd.github.raw" | sudo bash
+> ```
+
+---
+
+### Method 2: Install via Git Clone
 
 1. Clone this repository onto your server:
    ```bash
@@ -55,11 +76,12 @@ Unlike standard packet sniffing tools that flood terminal scrollbacks with milli
    sudo ./install.sh
    ```
 
-The script will automatically:
-* Verify and install missing packages (`python3`, `tcpdump`).
-* Deploy the executable to `/usr/local/bin/traffic-monitor.py`.
-* Create the log directory at `/var/log/traffic-monitor/`.
-* Configure, enable, and start the systemd unit `traffic-monitor.service`.
+The installer script automatically:
+* Verifies and installs missing dependencies (`python3`, `tcpdump`).
+* Deploys the standalone executable to `/usr/local/bin/traffic-monitor.py`.
+* Sets up `/etc/default/traffic-monitor` for configuration.
+* Creates the log directory at `/var/log/traffic-monitor/`.
+* Deploys, enables, and starts/restarts the systemd unit `traffic-monitor.service`.
 
 ---
 
