@@ -141,22 +141,22 @@ function save_report(date_str, filename,   target, out_file, tmp_file, total_pkt
     if (ex_str != "") {
         print "# Excluded Networks: " ex_str >> tmp_file
     }
-    print "------------------------------------------------------------------------" >> tmp_file
-    printf "%-42s %-12s %-15s\n", "DESTINATION (IP:PORT)", "PACKETS", "TOTAL BYTES" >> tmp_file
-    print "------------------------------------------------------------------------" >> tmp_file
+    print "----------------------------------------------------------------------------------" >> tmp_file
+    printf "%-42s %-10s %-12s %-15s\n", "DESTINATION (IP:PORT)", "PROTOCOL", "PACKETS", "TOTAL BYTES" >> tmp_file
+    print "----------------------------------------------------------------------------------" >> tmp_file
 
     total_pkts = 0
     total_bytes = 0
 
     PROCINFO["sorted_in"] = "@val_num_desc"
     for (target in bytes) {
-        printf "%-42s %-12d %-15d\n", target, pkts[target], bytes[target] >> tmp_file
+        printf "%-42s %-10s %-12d %-15d\n", target, proto[target], pkts[target], bytes[target] >> tmp_file
         total_pkts += pkts[target]
         total_bytes += bytes[target]
     }
 
-    print "------------------------------------------------------------------------" >> tmp_file
-    printf "%-42s %-12d %-15d\n", "GRAND TOTAL", total_pkts, total_bytes >> tmp_file
+    print "----------------------------------------------------------------------------------" >> tmp_file
+    printf "%-42s %-10s %-12d %-15d\n", "GRAND TOTAL", "-", total_pkts, total_bytes >> tmp_file
     close(tmp_file)
 
     system("mv -f " tmp_file " " out_file)
@@ -165,6 +165,8 @@ function save_report(date_str, filename,   target, out_file, tmp_file, total_pkt
 {
     dst = ""
     len = 0
+    pkt_proto = ""
+
     for (i=1; i<=NF; i++) {
         if ($i == ">") {
             dst = $(i+1)
@@ -175,6 +177,29 @@ function save_report(date_str, filename,   target, out_file, tmp_file, total_pkt
         }
     }
 
+    # Detect protocol
+    if ($0 ~ /: Flags \[/) {
+        pkt_proto = "TCP"
+    } else if ($0 ~ /: UDP,/) {
+        pkt_proto = "UDP"
+    } else if ($0 ~ /: ICMP/) {
+        pkt_proto = "ICMP"
+    } else if ($0 ~ /: GRE/) {
+        pkt_proto = "GRE"
+    } else if ($0 ~ /: ESP/) {
+        pkt_proto = "ESP"
+    } else if ($0 ~ /: AH/) {
+        pkt_proto = "AH"
+    } else {
+        match($0, />\s+[^:]+:\s+([A-Za-z0-9_-]+)/, m)
+        if (m[1] != "") {
+            pkt_proto = toupper(m[1])
+            sub(/,$/, "", pkt_proto)
+        } else {
+            pkt_proto = "OTHER"
+        }
+    }
+
     if (dst != "" && len > 0) {
         if (is_excluded(dst)) {
             next
@@ -182,6 +207,7 @@ function save_report(date_str, filename,   target, out_file, tmp_file, total_pkt
 
         pkts[dst]++
         bytes[dst] += len
+        proto[dst] = pkt_proto
     }
 
     now = systime()
@@ -190,6 +216,7 @@ function save_report(date_str, filename,   target, out_file, tmp_file, total_pkt
         save_report(current_date, "outbound_traffic_" current_date ".txt")
         delete pkts
         delete bytes
+        delete proto
         current_date = today
     }
 
