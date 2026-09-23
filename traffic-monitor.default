@@ -3,8 +3,10 @@
 # Network interface to listen on (default: any)
 TRAFFIC_MONITOR_INTERFACE=any
 
-# Direction filter passed to tcpdump (default: -Q out)
-TRAFFIC_MONITOR_FILTER="-Q out"
+# Direction or pcap filter passed to tcpdump
+# Leave empty (default) to capture both Inbound and Outbound traffic
+# Set to "-Q out" for Outbound-only, or "-Q in" for Inbound-only
+TRAFFIC_MONITOR_FILTER=""
 
 # Log storage directory (default: /var/log/traffic-monitor)
 TRAFFIC_MONITOR_LOG_DIR=/var/log/traffic-monitor

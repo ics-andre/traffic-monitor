@@ -1,20 +1,22 @@
 # Traffic Monitor
 
-A lightweight, automated 24-hour outbound network traffic monitor and aggregator for Linux. Built with **pure Bash and Awk** on top of `tcpdump`, managed as a resilient `systemd` service with **zero Python or external dependencies**.
+A lightweight, automated 24-hour bidirectional network traffic monitor and aggregator for Linux. Built with **pure Bash and Awk** on top of `tcpdump`, managed as a resilient `systemd` service with **zero Python or external dependencies**.
 
 ## Overview
 
-Unlike standard packet sniffing tools that flood terminal scrollbacks with millions of individual packet records, **Traffic Monitor** groups and aggregates network flow per destination endpoint (`IP:Port`). It tracks packet counts and cumulative transferred bytes in real-time, automatically rotating logs every 24 hours.
+Unlike standard packet sniffing tools that flood terminal scrollbacks with millions of individual packet records, **Traffic Monitor** groups and aggregates network flow per destination/source endpoint (`IP:Port`). It tracks packet counts and cumulative transferred bytes in real-time, automatically rotating logs every 24 hours into separate **Inbound** and **Outbound** reports.
 
 ### Key Features
 
+* **Bidirectional Traffic Tracking**: Captures both **Inbound** (who sends to us) and **Outbound** (where we send) into separate reports.
 * **Zero Python Dependency**: Written entirely in pure **POSIX Bash & Awk** + `tcpdump`. Runs out-of-the-box on minimal Linux installations (Ubuntu/Debian, RHEL/Rocky/Alma/CentOS, Amazon Linux, Alpine).
-* **Real-time Flow Aggregation**: Summarizes traffic per unique `DESTINATION (IP:PORT)`. No redundant per-packet log spam.
+* **Real-time Flow Aggregation**: Summarizes traffic per unique `ENDPOINT (IP:PORT)`. No redundant per-packet log spam.
 * **Auto-Sorted by Volume**: Endpoints consuming the highest bandwidth always appear at the top (descending sort by bytes).
+* **Protocol Detection**: Automatically identifies transport protocol (`TCP`, `UDP`, `ICMP`, `GRE`, `ESP`, etc.) per flow.
 * **Automatic Container & IP Exclusion**: Filters out traffic to local container networks (`docker0`, `br-*`, Podman, CNI, virbr) and custom IP/CIDR blocks to focus strictly on real external/cross-cloud network traffic.
 * **Configurable Log Retention (Default: 7 Days)**: Automatically cleans up archived daily logs older than N days (default: 7 days) upon rotation and startup, keeping disk usage bounded.
-* **Automatic 24-Hour Log Rotation**: Automatically saves the completed day's report at midnight (`00:00`) to `outbound_traffic_YYYY-MM-DD.txt` and resets daily counters without stopping or dropping captured packets.
-* **Periodic Live Snapshot**: Flushes current day-to-date traffic metrics every 10 seconds to `outbound_traffic_current.txt`.
+* **Automatic 24-Hour Log Rotation**: Automatically saves the completed day's report at midnight (`00:00`) to `{inbound,outbound}_traffic_YYYY-MM-DD.txt` and resets daily counters without stopping or dropping captured packets.
+* **Periodic Live Snapshot**: Flushes current day-to-date traffic metrics every 10 seconds to `{inbound,outbound}_traffic_current.txt`.
 * **Zero Data Loss on Shutdown**: Flushes final aggregated metrics to disk when the service stops or restarts.
 * **Systemd Native**: Automatic restart on failure, auto-start on boot, standard log integration.
 
@@ -24,7 +26,7 @@ Unlike standard packet sniffing tools that flood terminal scrollbacks with milli
 
 ```text
 .
-├── traffic-monitor.sh       # Core Bash/Awk traffic aggregator
+├── traffic-monitor.sh       # Core Bash/Awk bidirectional traffic aggregator
 ├── traffic-monitor.service  # Systemd service unit file
 ├── traffic-monitor.default  # Default environment configuration template
 ├── install.sh               # Standalone one-step installer (curl-pipe friendly)
@@ -53,17 +55,6 @@ You can install and start the service directly in a single command without cloni
 curl -fsSL https://raw.githubusercontent.com/ics-andre/traffic-monitor/main/install.sh | sudo bash
 ```
 
-> **Note for Private Repository Access:**  
-> If the repository is private, authenticate using a GitHub Personal Access Token (PAT):
-> ```bash
-> curl -fsSL -H "Authorization: token <YOUR_GITHUB_TOKEN>" \
->   https://raw.githubusercontent.com/ics-andre/traffic-monitor/main/install.sh | sudo bash
-> ```
-> Or if using `gh` CLI:
-> ```bash
-> gh api repos/ics-andre/traffic-monitor/contents/install.sh -H "Accept: application/vnd.github.raw" | sudo bash
-> ```
-
 ---
 
 ### Method 2: Install via Git Clone
@@ -80,11 +71,11 @@ curl -fsSL https://raw.githubusercontent.com/ics-andre/traffic-monitor/main/inst
    ```
 
 The installer script automatically:
-* Verifies and installs missing dependencies (`python3`, `tcpdump`).
-* Deploys the standalone executable to `/usr/local/bin/traffic-monitor.py`.
+* Verifies and installs missing dependencies (`tcpdump`, `awk`).
+* Deploys the standalone executable to `/usr/local/bin/traffic-monitor.sh`.
 * Sets up `/etc/default/traffic-monitor` for configuration.
 * Creates the log directory at `/var/log/traffic-monitor/`.
-* Deploys, enables, and starts/restarts the systemd unit `traffic-monitor.service`.
+* Unmasks (if previously masked), enables, and starts/restarts the systemd unit `traffic-monitor.service`.
 
 ---
 
@@ -103,14 +94,23 @@ To view the active day's aggregated outbound traffic:
 sudo cat /var/log/traffic-monitor/outbound_traffic_current.txt
 ```
 
+To view the active day's aggregated inbound traffic:
+```bash
+sudo cat /var/log/traffic-monitor/inbound_traffic_current.txt
+```
+
 To continuously watch live traffic updates (refreshes every 2 seconds):
 ```bash
+# Outbound watch
 watch -n 2 'sudo cat /var/log/traffic-monitor/outbound_traffic_current.txt'
+
+# Inbound watch
+watch -n 2 'sudo cat /var/log/traffic-monitor/inbound_traffic_current.txt'
 ```
 
 ### Viewing Archived Daily Reports
 
-Each day at `00:00` (midnight), a completed summary is archived:
+Each day at `00:00` (midnight), completed summaries are archived:
 ```bash
 ls -lh /var/log/traffic-monitor/
 ```
@@ -118,9 +118,12 @@ ls -lh /var/log/traffic-monitor/
 Example listing:
 ```text
 /var/log/traffic-monitor/
-├── outbound_traffic_current.txt       # Real-time running total for today
-├── outbound_traffic_2026-09-22.txt    # Archived report for 2026-09-22
-└── outbound_traffic_2026-09-23.txt    # Archived report for 2026-09-23
+├── outbound_traffic_current.txt       # Real-time running total outbound for today
+├── inbound_traffic_current.txt        # Real-time running total inbound for today
+├── outbound_traffic_2026-09-23.txt    # Archived outbound report for 2026-09-23
+├── inbound_traffic_2026-09-23.txt     # Archived inbound report for 2026-09-23
+├── outbound_traffic_2026-09-24.txt    # Archived outbound report for 2026-09-24
+└── inbound_traffic_2026-09-24.txt     # Archived inbound report for 2026-09-24
 ```
 
 ---
@@ -129,9 +132,10 @@ Example listing:
 
 Reports are rendered in an easy-to-read tabular format including the detected transport protocol:
 
+### Outbound Report (`outbound_traffic_*.txt`)
 ```text
-# Outbound Traffic Report - Date: 2026-09-23
-# Last Updated: 2026-09-23 00:15:30
+# Outbound Traffic Report - Date: 2026-09-24
+# Last Updated: 2026-09-24 08:15:30
 # Retention Policy: 7 days
 # Excluded Networks: 172.18.0.0/16, 172.17.0.0/16, 127.0.0.0/8, 169.254.169.254/32
 ----------------------------------------------------------------------------------
@@ -140,12 +144,25 @@ DESTINATION (IP:PORT)                      PROTOCOL   PACKETS      TOTAL BYTES
 10.101.64.10.6379                          TCP        17201        13803520       
 10.101.0.4.9009                            TCP        533          3511054        
 10.151.10.136.1514                         UDP        390          181836         
-10.101.0.4.3100                            TCP        282          89153          
-10.126.1.6.9443                            TCP        330          57915          
-10.101.0.10.53234                          TCP        25           36431          
 10.151.10.134                              ICMP       4            256            
 ----------------------------------------------------------------------------------
-GRAND TOTAL                                -          19650        17716566       
+GRAND TOTAL                                -          18128        17496666       
+```
+
+### Inbound Report (`inbound_traffic_*.txt`)
+```text
+# Inbound Traffic Report - Date: 2026-09-24
+# Last Updated: 2026-09-24 08:15:30
+# Retention Policy: 7 days
+# Excluded Networks: 172.18.0.0/16, 172.17.0.0/16, 127.0.0.0/8, 169.254.169.254/32
+----------------------------------------------------------------------------------
+SOURCE (IP:PORT)                           PROTOCOL   PACKETS      TOTAL BYTES    
+----------------------------------------------------------------------------------
+10.151.10.134.48210                        TCP        12400        16892400       
+172.19.10.14.39102                         TCP        5420         7412900        
+10.151.10.134                              ICMP       4            256            
+----------------------------------------------------------------------------------
+GRAND TOTAL                                -          17824        24305556       
 ```
 
 ---
@@ -159,8 +176,10 @@ sudo tee /etc/default/traffic-monitor << 'EOF'
 # Network interface to listen on (default: any)
 TRAFFIC_MONITOR_INTERFACE=any
 
-# Direction filter passed to tcpdump (default: -Q out)
-TRAFFIC_MONITOR_FILTER="-Q out"
+# Direction or pcap filter passed to tcpdump
+# Leave empty (default) to capture both Inbound and Outbound traffic
+# Set to "-Q out" for Outbound-only, or "-Q in" for Inbound-only
+TRAFFIC_MONITOR_FILTER=""
 
 # Log storage directory (default: /var/log/traffic-monitor)
 TRAFFIC_MONITOR_LOG_DIR=/var/log/traffic-monitor

@@ -13,7 +13,7 @@ fi
 
 echo "=========================================================="
 echo "      Installing Traffic Monitor Systemd Service          "
-echo "        (Pure Bash/Awk - Zero Python Dependency)          "
+echo "  (Bidirectional Inbound & Outbound Traffic Monitor)      "
 echo "=========================================================="
 
 # 1. Check & install prerequisites (tcpdump and awk)
@@ -54,7 +54,8 @@ echo "[*] Installing monitor script to ${BIN_DEST}..."
 cat << 'EOF' > "${BIN_DEST}"
 #!/usr/bin/env bash
 # ==============================================================================
-# Traffic Monitor - Pure Bash/Awk 24h Outbound Network Traffic Aggregator
+# Traffic Monitor - Pure Bash/Awk 24h Bidirectional Network Traffic Aggregator
+# Captures both Inbound and Outbound traffic into separate aggregated reports.
 # Zero Python dependency. Requires only bash, awk, tcpdump, and coreutils.
 # ==============================================================================
 set -euo pipefail
@@ -66,7 +67,7 @@ if [ -f "$CONFIG_FILE" ]; then
 fi
 
 INTERFACE="${TRAFFIC_MONITOR_INTERFACE:-any}"
-FILTER="${TRAFFIC_MONITOR_FILTER:--Q out}"
+FILTER="${TRAFFIC_MONITOR_FILTER:-}"
 LOG_DIR="${TRAFFIC_MONITOR_LOG_DIR:-/var/log/traffic-monitor}"
 SYNC_INTERVAL="${TRAFFIC_MONITOR_SYNC_INTERVAL:-10}"
 RETENTION_DAYS="${TRAFFIC_MONITOR_RETENTION_DAYS:-7}"
@@ -82,11 +83,11 @@ cleanup_old_logs() {
     local cutoff
     cutoff=$(date -d "${days} days ago" +%Y-%m-%d 2>/dev/null || date -v-${days}d +%Y-%m-%d 2>/dev/null || "")
     if [ -n "$cutoff" ] && [ -d "$dir" ]; then
-        for f in "$dir"/outbound_traffic_[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9].txt; do
+        for f in "$dir"/{inbound,outbound}_traffic_[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9].txt; do
             [ -e "$f" ] || continue
             local fname
             fname=$(basename "$f")
-            local fdate="${fname#outbound_traffic_}"
+            local fdate="${fname#*_traffic_}"
             fdate="${fdate%.txt}"
             if [[ "$fdate" < "$cutoff" ]]; then
                 rm -f "$f"
@@ -179,11 +180,19 @@ function is_excluded(dst,   n_parts, parts, ip_str, oct, ip_num, i) {
     return 0
 }
 
-function save_report(date_str, filename,   target, out_file, tmp_file, total_pkts, total_bytes, ex_str, i, ret_str) {
+function save_report(type, date_str, filename,   target, out_file, tmp_file, total_pkts, total_bytes, ex_str, i, ret_str, header_title, col_title) {
     out_file = log_dir "/" filename
     tmp_file = out_file ".tmp"
 
-    print "# Outbound Traffic Report - Date: " date_str > tmp_file
+    if (type == "OUT") {
+        header_title = "Outbound Traffic Report"
+        col_title = "DESTINATION (IP:PORT)"
+    } else {
+        header_title = "Inbound Traffic Report"
+        col_title = "SOURCE (IP:PORT)"
+    }
+
+    print "# " header_title " - Date: " date_str > tmp_file
     print "# Last Updated: " strftime("%Y-%m-%d %H:%M:%S", systime()) >> tmp_file
     ret_str = (retention > 0 ? retention " days" : "unlimited (disabled)")
     print "# Retention Policy: " ret_str >> tmp_file
@@ -196,17 +205,25 @@ function save_report(date_str, filename,   target, out_file, tmp_file, total_pkt
         print "# Excluded Networks: " ex_str >> tmp_file
     }
     print "----------------------------------------------------------------------------------" >> tmp_file
-    printf "%-42s %-10s %-12s %-15s\n", "DESTINATION (IP:PORT)", "PROTOCOL", "PACKETS", "TOTAL BYTES" >> tmp_file
+    printf "%-42s %-10s %-12s %-15s\n", col_title, "PROTOCOL", "PACKETS", "TOTAL BYTES" >> tmp_file
     print "----------------------------------------------------------------------------------" >> tmp_file
 
     total_pkts = 0
     total_bytes = 0
 
     PROCINFO["sorted_in"] = "@val_num_desc"
-    for (target in bytes) {
-        printf "%-42s %-10s %-12d %-15d\n", target, proto[target], pkts[target], bytes[target] >> tmp_file
-        total_pkts += pkts[target]
-        total_bytes += bytes[target]
+    if (type == "OUT") {
+        for (target in out_bytes) {
+            printf "%-42s %-10s %-12d %-15d\n", target, out_proto[target], out_pkts[target], out_bytes[target] >> tmp_file
+            total_pkts += out_pkts[target]
+            total_bytes += out_bytes[target]
+        }
+    } else {
+        for (target in in_bytes) {
+            printf "%-42s %-10s %-12d %-15d\n", target, in_proto[target], in_pkts[target], in_bytes[target] >> tmp_file
+            total_pkts += in_pkts[target]
+            total_bytes += in_bytes[target]
+        }
     }
 
     print "----------------------------------------------------------------------------------" >> tmp_file
@@ -217,12 +234,21 @@ function save_report(date_str, filename,   target, out_file, tmp_file, total_pkt
 }
 
 {
+    direction = ""
+    src = ""
     dst = ""
     len = 0
     pkt_proto = ""
 
-    for (i=1; i<=NF; i++) {
+    # Check direction in Linux cooked SLL/SLL2 header
+    for (i = 1; i <= 4 && i <= NF; i++) {
+        if ($i == "In") direction = "IN"
+        else if ($i == "Out") direction = "OUT"
+    }
+
+    for (i = 1; i <= NF; i++) {
         if ($i == ">") {
+            src = $(i-1)
             dst = $(i+1)
             sub(/:$/, "", dst)
         }
@@ -231,7 +257,7 @@ function save_report(date_str, filename,   target, out_file, tmp_file, total_pkt
         }
     }
 
-    # Detect protocol
+    # Protocol detection
     if ($0 ~ /: Flags \[/) {
         pkt_proto = "TCP"
     } else if ($0 ~ /: UDP,/) {
@@ -254,34 +280,48 @@ function save_report(date_str, filename,   target, out_file, tmp_file, total_pkt
         }
     }
 
-    if (dst != "" && len > 0) {
-        if (is_excluded(dst)) {
+    if (len > 0) {
+        # Check exclusion for both source and destination
+        if (is_excluded(src) || is_excluded(dst)) {
             next
         }
 
-        pkts[dst]++
-        bytes[dst] += len
-        proto[dst] = pkt_proto
+        if (direction == "IN") {
+            in_pkts[src]++
+            in_bytes[src] += len
+            in_proto[src] = pkt_proto
+        } else {
+            out_pkts[dst]++
+            out_bytes[dst] += len
+            out_proto[dst] = pkt_proto
+        }
     }
 
     now = systime()
     today = strftime("%Y-%m-%d", now)
     if (today != current_date) {
-        save_report(current_date, "outbound_traffic_" current_date ".txt")
-        delete pkts
-        delete bytes
-        delete proto
+        save_report("OUT", current_date, "outbound_traffic_" current_date ".txt")
+        save_report("IN", current_date, "inbound_traffic_" current_date ".txt")
+        delete out_pkts
+        delete out_bytes
+        delete out_proto
+        delete in_pkts
+        delete in_bytes
+        delete in_proto
         current_date = today
     }
 
     if (now - last_sync >= sync_interval) {
-        save_report(current_date, "outbound_traffic_current.txt")
+        save_report("OUT", current_date, "outbound_traffic_current.txt")
+        save_report("IN", current_date, "inbound_traffic_current.txt")
         last_sync = now
     }
 }
 END {
-    save_report(current_date, "outbound_traffic_" current_date ".txt")
-    save_report(current_date, "outbound_traffic_current.txt")
+    save_report("OUT", current_date, "outbound_traffic_" current_date ".txt")
+    save_report("IN", current_date, "inbound_traffic_" current_date ".txt")
+    save_report("OUT", current_date, "outbound_traffic_current.txt")
+    save_report("IN", current_date, "inbound_traffic_current.txt")
 }
 '
 EOF
@@ -296,8 +336,10 @@ if [ ! -f "${CONFIG_DEST}" ]; then
 # Network interface to listen on (default: any)
 TRAFFIC_MONITOR_INTERFACE=any
 
-# Direction filter passed to tcpdump (default: -Q out)
-TRAFFIC_MONITOR_FILTER="-Q out"
+# Direction or pcap filter passed to tcpdump
+# Leave empty (default) to capture both Inbound and Outbound traffic
+# Set to "-Q out" for Outbound-only, or "-Q in" for Inbound-only
+TRAFFIC_MONITOR_FILTER=""
 
 # Log storage directory (default: /var/log/traffic-monitor)
 TRAFFIC_MONITOR_LOG_DIR=/var/log/traffic-monitor
@@ -320,13 +362,21 @@ TRAFFIC_MONITOR_EXCLUDE_NETWORKS="127.0.0.0/8,169.254.169.254/32"
 EOF
 else
     echo "[*] Existing configuration preserved at ${CONFIG_DEST}."
+    # If upgrading from outbound-only to bidirectional, clear legacy -Q out filter
+    sed -i 's/^TRAFFIC_MONITOR_FILTER="-Q out"/TRAFFIC_MONITOR_FILTER=""/' "${CONFIG_DEST}" 2>/dev/null || true
 fi
 
 # 4. Deploy Systemd Unit (/etc/systemd/system/traffic-monitor.service)
 echo "[*] Installing systemd service unit to ${SERVICE_DEST}..."
+# Unmask if previously masked
+if systemctl is-enabled traffic-monitor.service 2>&1 | grep -q "masked"; then
+    echo "[*] Unmasking traffic-monitor.service..."
+    systemctl unmask traffic-monitor.service
+fi
+
 cat << 'EOF' > "${SERVICE_DEST}"
 [Unit]
-Description=Outbound Traffic Monitor (24h Auto-Rotate)
+Description=Bidirectional Network Traffic Monitor (24h Auto-Rotate)
 After=network.target
 
 [Service]
@@ -363,9 +413,11 @@ echo "=========================================================="
 echo ""
 echo "Useful Commands:"
 echo "  - Check status:      sudo systemctl status traffic-monitor"
-echo "  - View live traffic: sudo cat ${LOG_DIR}/outbound_traffic_current.txt"
-echo "  - Live watch:        watch -n 2 'sudo cat ${LOG_DIR}/outbound_traffic_current.txt'"
-echo "  - Daily archives:    ls -lh ${LOG_DIR}/outbound_traffic_*.txt"
+echo "  - View OUTBOUND:     sudo cat ${LOG_DIR}/outbound_traffic_current.txt"
+echo "  - View INBOUND:      sudo cat ${LOG_DIR}/inbound_traffic_current.txt"
+echo "  - Live watch OUT:    watch -n 2 'sudo cat ${LOG_DIR}/outbound_traffic_current.txt'"
+echo "  - Live watch IN:     watch -n 2 'sudo cat ${LOG_DIR}/inbound_traffic_current.txt'"
+echo "  - Daily archives:    ls -lh ${LOG_DIR}/*_traffic_*.txt"
 echo "  - Stop service:      sudo systemctl stop traffic-monitor"
 echo "  - Edit config:       sudo nano ${CONFIG_DEST}"
 echo ""
