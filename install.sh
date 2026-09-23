@@ -368,11 +368,9 @@ fi
 
 # 4. Deploy Systemd Unit (/etc/systemd/system/traffic-monitor.service)
 echo "[*] Installing systemd service unit to ${SERVICE_DEST}..."
-# Unmask if previously masked
-if systemctl is-enabled traffic-monitor.service 2>&1 | grep -q "masked"; then
-    echo "[*] Unmasking traffic-monitor.service..."
-    systemctl unmask traffic-monitor.service
-fi
+# Unmask if previously masked (remove symlink to /dev/null if present)
+systemctl unmask traffic-monitor.service 2>/dev/null || true
+rm -f "${SERVICE_DEST}"
 
 cat << 'EOF' > "${SERVICE_DEST}"
 [Unit]
